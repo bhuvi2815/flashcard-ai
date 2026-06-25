@@ -29,7 +29,8 @@ sentencepiece==0.2.0
 # and burns through the 512 MB RAM limit before the server even starts.
 # The --index-url flag tells pip to fetch from PyTorch's CPU-only wheel
 # registry instead of PyPI's default (which ships the huge CUDA build).
-torch==2.3.0+cpu --index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.0+cpu
 
 # ===== Environment variables =====
 python-dotenv==1.0.1
