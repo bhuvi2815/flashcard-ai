@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------
+   Signature background: a faint dotted "grid paper" texture across the
+   whole app, evoking an index card / study desk feel without being loud.
+   This is the one quiet, ambient detail that runs through every screen.
+--------------------------------------------------------------------- */
+body {
+  background-color: #FBF6EC;
+  background-image: radial-gradient(circle, #24201a14 1px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Sticky-note style rotation classes, used sparingly on dashboard cards
+   for a hand-placed, tactile feel rather than a perfectly aligned grid. */
+@layer utilities {
+  .tilt-left {
+    transform: rotate(-1.5deg);
+  }
+  .tilt-right {
+    transform: rotate(1.5deg);
+  }
+}
+
+/* Card-flip 3D support (used by the FlashcardFlip component) */
+.flip-scene {
+  perspective: 1600px;
+}
+.flip-card {
+  transform-style: preserve-3d;
+  transition: transform 0.45s cubic-bezier(0.45, 0.05, 0.55, 0.95);
+}
+.flip-card.is-flipped {
+  transform: rotateY(180deg);
+}
+.flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flip-face-back {
+  transform: rotateY(180deg);
+}
+
+/* Respect users who prefer reduced motion -- disable the flip animation's
+   transition (it'll just snap instantly) and any other motion effects. */
+@media (prefers-reduced-motion: reduce) {
+  .flip-card {
+    transition: none !important;
+  }
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
