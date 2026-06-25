@@ -49,27 +49,19 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def hash_password(plain_password: str) -> str:
     """
     Converts a plain-text password into a bcrypt hash.
-    Called ONCE at signup time, right before saving the user to MongoDB.
-    
-    NOTE: bcrypt has a hard limit of 72 bytes. Passwords longer than 72
-    bytes are truncated here to avoid "ValueError: password cannot be 
-    longer than 72 bytes" errors on Render or other deployments.
+    Bcrypt has a 72-byte limit, so we truncate the password first.
     """
-    # Truncate to 72 bytes (bcrypt's max)
-    password_bytes = plain_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-    return pwd_context.hash(password_bytes)
+    truncated = plain_password[:72]
+    return pwd_context.hash(truncated)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Checks a login attempt's password against the stored hash.
-    Returns True/False. We NEVER decrypt the hash back to plain text
-    (that's not even possible with bcrypt) -- we just re-hash the
-    GUESS using the same salt and compare the results.
+    Returns True/False. Truncate here too for consistency.
     """
-    # Also truncate here for consistency
-    password_bytes = plain_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-    return pwd_context.verify(password_bytes, hashed_password)
+    truncated = plain_password[:72]
+    return pwd_context.verify(truncated, hashed_password))
 
 
 # ---- JWT token setup ----
