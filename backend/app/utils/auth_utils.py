@@ -61,7 +61,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns True/False. Truncate here too for consistency.
     """
     truncated = plain_password[:72]
-    return pwd_context.verify(truncated, hashed_password))
+    return pwd_context.verify(truncated, hashed_password)
 
 
 # ---- JWT token setup ----
