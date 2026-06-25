@@ -17,10 +17,19 @@ pydantic-settings==2.2.1
 email-validator==2.1.1
 
 # ===== NLP / AI-ML (the core of this assignment) =====
+# spaCy small English pipeline -- ~13 MB, CPU only, no GPU needed
 spacy==3.7.5
+
+# Hugging Face Transformers for T5 question-generation model
 transformers==4.41.2
-torch==2.3.0
 sentencepiece==0.2.0
+
+# PyTorch CPU-only build -- ~300 MB vs ~1.9 GB for the default GPU build.
+# Render free tier is CPU-only anyway so the GPU build gives zero benefit
+# and burns through the 512 MB RAM limit before the server even starts.
+# The --index-url flag tells pip to fetch from PyTorch's CPU-only wheel
+# registry instead of PyPI's default (which ships the huge CUDA build).
+torch==2.3.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
 # ===== Environment variables =====
 python-dotenv==1.0.1

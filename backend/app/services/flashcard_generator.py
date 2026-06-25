@@ -38,6 +38,13 @@ WHY THIS DESIGN (and not just "ask an LLM to make flashcards")?
 The assignment EXPLICITLY forbids paid/external AI APIs (OpenAI, Gemini,
 Claude API). Everything here runs locally using open-source models
 small enough to fit on a free-tier server (no GPU required).
+
+MEMORY OPTIMISATION (Render free tier = 512 MB RAM):
+  Models are NOT loaded at import time. Instead, they are loaded the
+  first time generate_flashcards() is called and then cached in
+  module-level variables (_nlp, _qg_tokenizer, _qg_model).
+  This keeps startup RAM near-zero so Render can boot the process
+  without hitting the 512 MB ceiling before serving a single request.
 """
 
 import spacy
@@ -45,23 +52,53 @@ from transformers import T5ForConditionalGeneration, T5Tokenizer
 import torch
 
 # ---------------------------------------------------------------------------
-# MODEL LOADING -- happens ONCE when the server starts, not per-request.
-# Loading a model is slow (seconds) and memory-heavy; doing it on every
-# request would make the API painfully slow and wasteful.
-# JAVA ANALOGY: this is like a `@PostConstruct`-initialized singleton bean.
+# LAZY-LOADED SINGLETONS
 # ---------------------------------------------------------------------------
+# These start as None. _load_models() fills them on the first real request.
+# After that, every subsequent call reuses the already-loaded objects --
+# same behaviour as the original "load at import" approach, just deferred.
+# JAVA ANALOGY: like a lazily-initialised @Bean / double-checked singleton.
+# ---------------------------------------------------------------------------
+_nlp = None
+_qg_tokenizer = None
+_qg_model = None
 
-# spaCy's small English pipeline -- handles tokenization, POS tagging,
-# named entity recognition (NER), and sentence boundary detection.
-# "en_core_web_sm" is ~13MB, fast, no GPU needed -- good fit for free hosting.
-nlp = spacy.load("en_core_web_sm")
-
-# A T5 model fine-tuned specifically for question generation.
-# Given input formatted as "generate question: <answer> context: <sentence>",
-# it outputs a natural-language question. ~60M parameters, runs fine on CPU.
 QG_MODEL_NAME = "valhalla/t5-small-qg-hl"
-qg_tokenizer = T5Tokenizer.from_pretrained(QG_MODEL_NAME)
-qg_model = T5ForConditionalGeneration.from_pretrained(QG_MODEL_NAME)
+
+
+def _load_models() -> None:
+    """
+    Load spaCy pipeline and the T5 QG model into module-level variables.
+    Called automatically on the first generate_flashcards() invocation;
+    subsequent calls are a no-op (guard: `if _nlp is not None`).
+
+    WHY LAZY AND NOT AT STARTUP?
+    Render's free tier gives each process 512 MB.  Loading torch +
+    transformers + spaCy all at import time consumes ~600-700 MB before
+    the HTTP server even binds to a port, which causes an OOM kill during
+    the build/startup phase.  Deferring to the first real request means
+    the process boots cheaply and only pays the memory cost when a user
+    actually triggers generation -- at which point Render's runtime
+    allocates the RAM from its larger pool rather than the tighter
+    startup budget.
+    """
+    global _nlp, _qg_tokenizer, _qg_model
+
+    if _nlp is not None:
+        return  # already loaded -- nothing to do
+
+    # spaCy small English pipeline (~13 MB):
+    # handles tokenisation, POS tagging, NER, sentence boundary detection.
+    _nlp = spacy.load("en_core_web_sm")
+
+    # T5-small fine-tuned for question generation (~60M parameters, CPU-only).
+    # torch_dtype=torch.float32 keeps it compatible with CPU-only Render instances.
+    _qg_tokenizer = T5Tokenizer.from_pretrained(QG_MODEL_NAME)
+    _qg_model = T5ForConditionalGeneration.from_pretrained(
+        QG_MODEL_NAME,
+        torch_dtype=torch.float32,   # explicit float32 -- avoids bfloat16 issues on CPU
+    )
+    _qg_model.eval()  # switch to inference mode -- disables dropout, saves a little RAM
 
 
 def _score_sentences(doc) -> list[tuple]:
@@ -138,17 +175,17 @@ def _generate_question(sentence_text: str, answer_phrase: str) -> str:
     )
     input_text = f"generate question: {highlighted}"
 
-    input_ids = qg_tokenizer.encode(
+    input_ids = _qg_tokenizer.encode(
         input_text, return_tensors="pt", max_length=256, truncation=True
     )
 
     with torch.no_grad():  # we're not training, so skip gradient tracking
         # this saves memory and makes inference faster
-        output_ids = qg_model.generate(
+        output_ids = _qg_model.generate(
             input_ids, max_length=64, num_beams=4, early_stopping=True
         )
 
-    question = qg_tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    question = _qg_tokenizer.decode(output_ids[0], skip_special_tokens=True)
     return question.strip()
 
 
@@ -162,8 +199,15 @@ def generate_flashcards(notes_text: str, max_cards: int = 8) -> list[dict]:
 
     `max_cards` caps how many flashcards we generate, so a very long
     paragraph doesn't produce an overwhelming review session.
+
+    Models are loaded on the first call and reused on all subsequent
+    calls (lazy singleton pattern -- see _load_models() above).
     """
-    doc = nlp(notes_text)
+    # Ensure models are in memory before we use them.
+    # This is a no-op on every call after the first one.
+    _load_models()
+
+    doc = _nlp(notes_text)
 
     # Step 2: score and rank all sentences
     scored_sentences = _score_sentences(doc)
