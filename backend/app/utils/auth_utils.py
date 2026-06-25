@@ -47,6 +47,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(plain_password: str) -> str:
+
+     """Hash a password using bcrypt. Passwords longer than 72 bytes are
+    truncated (bcrypt limitation)."""
+    # Truncate to 72 bytes (bcrypt's max)
+    password_bytes = password.encode('utf-8')[:72]
+    return bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode('utf-8')
+
     """
     Converts a plain-text password into a bcrypt hash.
     Called ONCE at signup time, right before saving the user to MongoDB.
